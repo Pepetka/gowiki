@@ -3,12 +3,10 @@ package main
 import (
 	"errors"
 	"flag"
-	"fmt"
-	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/pepetka/gowiki/sitebuilder"
+	"github.com/pepetka/gowiki"
 )
 
 func buildHandler(args []string) error {
@@ -16,7 +14,7 @@ func buildHandler(args []string) error {
 	if len(args) > 0 {
 		dir = args[0]
 	}
-	return sitebuilder.Build(dir)
+	return gowiki.Build(dir)
 }
 
 func serveHandler(args []string) error {
@@ -28,9 +26,9 @@ func serveHandler(args []string) error {
 
 	f := flag.NewFlagSet("serve", flag.ExitOnError)
 	var port int
-	var build string
+	var build bool
 	f.IntVar(&port, "port", 8080, "server port")
-	f.StringVar(&build, "build", "", "build directory")
+	f.BoolVar(&build, "build", false, "build before serving")
 	err := f.Parse(args)
 	if err != nil {
 		return err
@@ -42,15 +40,14 @@ func serveHandler(args []string) error {
 		dir = args[0]
 	}
 
-	if build != "" {
-		err = sitebuilder.Build(build)
+	if build {
+		err = gowiki.Build(dir)
 		if err != nil {
 			return err
 		}
 	}
 
-	fmt.Printf("Serving on http://localhost:%d\n", port)
-	return http.ListenAndServe(addr, http.FileServer(http.Dir(dir)))
+	return gowiki.Serve(dir, addr)
 }
 
 func createHandler(args []string) error {
@@ -64,5 +61,5 @@ func createHandler(args []string) error {
 		dir = args[0]
 	}
 
-	return sitebuilder.Create(slug, dir)
+	return gowiki.Create(slug, dir)
 }

@@ -1,9 +1,11 @@
-// Package sitebuilder is a site builder from markdown files
-package sitebuilder
+// Package gowiki builds a static site from markdown files
+package gowiki
 
 import (
 	"errors"
+	"fmt"
 	"html/template"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -61,26 +63,46 @@ var (
 )
 
 func Build(dir string) (err error) {
-	tmpDst := "tmp"
+	tmpDst := path.Join(dir, "tmp")
 
 	err = os.MkdirAll(tmpDst, 0755)
 	if err != nil {
 		return err
 	}
 	defer (func() {
-		if removeErr := os.RemoveAll(tmpDst); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) && err == nil {
+		if !fileOrDirExists(tmpDst) {
+			return
+		}
+		if removeErr := os.RemoveAll(tmpDst); removeErr != nil && err == nil {
 			err = removeErr
 		}
 	})()
 
-	err = copyStatic(dir, tmpDst)
+	siteSrc := path.Join(dir, "site.yaml")
+	if !fileOrDirExists(siteSrc) {
+		return errors.New("site.yaml not found")
+	}
+	contentSrc := path.Join(dir, "content")
+	if !fileOrDirExists(contentSrc) {
+		return errors.New("content directory not found")
+	}
+	templatesSrc := path.Join(dir, "templates")
+	if !fileOrDirExists(templatesSrc) {
+		return errors.New("templates directory not found")
+	}
+
+	site, err := parseSite(siteSrc)
 	if err != nil {
 		return err
 	}
-
-	site, err := parseSite(path.Join(dir, "site.yaml"))
-	contents, err := parseAllContent(path.Join(dir, "content"))
-	iTmpl, pTmpl, err := parseTemplates(path.Join(dir, "templates"))
+	contents, err := parseAllContent(contentSrc)
+	if err != nil {
+		return err
+	}
+	iTmpl, pTmpl, err := parseTemplates(templatesSrc)
+	if err != nil {
+		return err
+	}
 
 	data := IndexDocument{
 		SiteTitle:       site.Title,
@@ -102,17 +124,30 @@ func Build(dir string) (err error) {
 		}
 	}
 
-	dst := path.Join(dir, "public")
-	err = os.RemoveAll(dst)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	err = os.Rename(tmpDst, dst)
+	err = copyStatic(dir, tmpDst)
 	if err != nil {
 		return err
 	}
 
-	return nil
+	dst := path.Join(dir, "public")
+	if removeErr := os.RemoveAll(dst); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
+		return removeErr
+	}
+
+	return os.Rename(tmpDst, dst)
+}
+
+func Serve(dir string, addr string) error {
+	dst := dir
+	if filepath.Base(dst) != "public" {
+		dst = path.Join(dir, "public")
+	}
+	if !fileOrDirExists(dst) {
+		return errors.New("public directory does not exist")
+	}
+
+	fmt.Printf("Serving on %s\n", addr)
+	return http.ListenAndServe(addr, http.FileServer(http.Dir(dst)))
 }
 
 func Create(slug string, dir string) (err error) {
@@ -127,14 +162,45 @@ func Create(slug string, dir string) (err error) {
 	}
 
 	fileName := slug + ".md"
-	if filepath.Base(dir) == "content" {
-		dir = path.Join(dir, "content")
+	dst := dir
+	if filepath.Base(dir) != "content" {
+		dst = path.Join(dir, "content")
 	}
-	fp := path.Join(dir, fileName)
-	if _, statErr := os.Stat(fp); statErr == nil {
+	if mkdirErr := os.MkdirAll(dst, 0755); mkdirErr != nil {
+		return mkdirErr
+	}
+	fp := path.Join(dst, fileName)
+	if fileOrDirExists(fp) {
 		return errors.New("file already exists")
 	}
+	tmp := fp + ".tmp"
+	defer (func() {
+		if !fileOrDirExists(tmp) {
+			return
+		}
+		if removeErr := os.RemoveAll(tmp); removeErr != nil && err == nil {
+			err = removeErr
+		}
+	})()
+	if saveErr := saveContent(meta, tmp); saveErr != nil {
+		return saveErr
+	}
 
+	return os.Rename(tmp, fp)
+}
+
+func fileOrDirExists(path string) bool {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return false
+	}
+	return false
+}
+
+func saveContent(meta Meta, fp string) (err error) {
 	f, err := os.Create(fp)
 	if err != nil {
 		return err
@@ -145,19 +211,16 @@ func Create(slug string, dir string) (err error) {
 		}
 	})()
 
-	_, err = f.WriteString("---\n")
-	if err != nil {
-		return err
+	if _, writeErr := f.WriteString("---\n"); writeErr != nil {
+		return writeErr
 	}
 	encoder := yaml.NewEncoder(f)
 	if encodeErr := encoder.Encode(meta); encodeErr != nil {
-		return errors.New(yaml.FormatError(encodeErr, false, true))
+		return encodeErr
 	}
-	_, err = f.WriteString("---\n")
-	if err != nil {
-		return err
+	if _, writeErr := f.WriteString("---\n"); writeErr != nil {
+		return writeErr
 	}
-
 	return nil
 }
 
@@ -167,6 +230,10 @@ func validateSlug(slug string) bool {
 }
 
 func saveHTML(tmpl *template.Template, path string, data any) (err error) {
+	if mkdirErr := os.MkdirAll(filepath.Dir(path), 0755); mkdirErr != nil {
+		return mkdirErr
+	}
+
 	f, err := os.Create(path)
 	if err != nil {
 		return err
@@ -176,10 +243,7 @@ func saveHTML(tmpl *template.Template, path string, data any) (err error) {
 			err = closeErr
 		}
 	})()
-	if err := tmpl.Execute(f, data); err != nil {
-		return err
-	}
-	return nil
+	return tmpl.Execute(f, data)
 }
 
 func copyStatic(src string, dst string) error {

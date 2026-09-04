@@ -1,9 +1,8 @@
-package sitebuilder
+package gowiki
 
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"html/template"
 	"io/fs"
 	"os"
@@ -27,7 +26,7 @@ func parseSite(path string) (site Site, err error) {
 
 	decoder := yaml.NewDecoder(file, yaml.Strict())
 	if err = decoder.Decode(&site); err != nil {
-		return site, errors.New(yaml.FormatError(err, false, true))
+		return site, err
 	}
 	return site, nil
 }
@@ -35,10 +34,12 @@ func parseSite(path string) (site Site, err error) {
 func parseAllContent(dir string) ([]Page, error) {
 	c := make([]Page, 0)
 
+	var parseErr error
 	err := dirWalker(dir, func(relPath string) error {
 		meta, content, err := parseContent(path.Join(dir, relPath))
 		if err != nil {
-			return err
+			parseErr = errors.Join(parseErr, err)
+			return nil
 		}
 		if meta.Draft {
 			return nil
@@ -54,6 +55,9 @@ func parseAllContent(dir string) ([]Page, error) {
 	if err != nil {
 		return nil, err
 	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
 	slices.SortFunc(c, func(a, b Page) int {
 		aTime := a.Date
 		bTime := b.Date
@@ -62,9 +66,9 @@ func parseAllContent(dir string) ([]Page, error) {
 			return strings.Compare(a.Title, b.Title)
 		}
 		if aTime.After(bTime) {
-			return 1
-		} else {
 			return -1
+		} else {
+			return 1
 		}
 	})
 
@@ -82,13 +86,13 @@ func parseContent(path string) (meta Meta, content template.HTML, err error) {
 		}
 	})()
 
-	metaBytes, c, err := splitMetaMd(file)
+	m, c, err := splitMD(file)
 	if err != nil {
 		return meta, template.HTML(""), err
 	}
 
-	if err = yaml.UnmarshalWithOptions(metaBytes, &meta, yaml.Strict()); err != nil {
-		return meta, template.HTML(""), errors.New(yaml.FormatError(err, false, true))
+	if err = yaml.UnmarshalWithOptions(m, &meta, yaml.Strict()); err != nil {
+		return meta, template.HTML(""), err
 	}
 
 	parsed := mdParser.Parse(c)
@@ -100,7 +104,7 @@ func parseContent(path string) (meta Meta, content template.HTML, err error) {
 	return meta, template.HTML(buf.String()), nil
 }
 
-type PageTemplates struct {
+type pageTemplates struct {
 	Index string
 
 	Layout string
@@ -114,10 +118,10 @@ func parseTemplates(dir string) (*template.Template, *template.Template, error) 
 		return nil, nil, err
 	}
 	if pt.Index == "" {
-		return nil, nil, fmt.Errorf("index template not found")
+		return nil, nil, errors.New("index template not found")
 	}
 	if pt.Page == "" {
-		return nil, nil, fmt.Errorf("page template not found")
+		return nil, nil, errors.New("page template not found")
 	}
 
 	iTmpl, err := template.ParseFiles(pt.Index)
@@ -141,9 +145,9 @@ func parseTemplates(dir string) (*template.Template, *template.Template, error) 
 	return iTmpl, pTmpl, nil
 }
 
-func groupTemplates(root string) (PageTemplates, error) {
+func groupTemplates(root string) (pageTemplates, error) {
 	allowedExt := ".html"
-	pt := PageTemplates{}
+	pt := pageTemplates{}
 
 	files, err := os.ReadDir(root)
 	if err != nil {
@@ -185,8 +189,5 @@ func dirWalker(root string, fn func(path string) error, allowedExt string) error
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }

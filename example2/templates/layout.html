@@ -4,11 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{{ block "title" . }}Страница не найдена{{ end }}</title>
-    <link rel="stylesheet" href="static/style.css" />
+    <link rel="stylesheet" href="/static/style.css" />
   </head>
   <body>
     <header class="site-header">
-      <a class="site-title" href="index.html">{{ .SiteTitle }}</a>
+      <a class="site-title" href="/index.html">{{ .SiteTitle }}</a>
     </header>
     <main class="page">{{block "content" .}}Страница не найдена{{end}}</main>
   </body>
