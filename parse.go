@@ -6,7 +6,7 @@ import (
 	"html/template"
 	"io/fs"
 	"os"
-	"path"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -36,7 +36,7 @@ func parseAllContent(dir string) ([]Page, error) {
 
 	var parseErr error
 	err := dirWalker(dir, func(relPath string) error {
-		meta, content, err := parseContent(path.Join(dir, relPath))
+		meta, content, err := parseContent(filepath.Join(dir, relPath))
 		if err != nil {
 			parseErr = errors.Join(parseErr, err)
 			return nil
@@ -160,14 +160,14 @@ func groupTemplates(root string) (pageTemplates, error) {
 		}
 		switch f.Name() {
 		case "index.html":
-			pt.Index = path.Join(root, f.Name())
+			pt.Index = filepath.Join(root, f.Name())
 		case "layout.html":
-			pt.Layout = path.Join(root, f.Name())
+			pt.Layout = filepath.Join(root, f.Name())
 		case "page.html":
-			pt.Page = path.Join(root, f.Name())
+			pt.Page = filepath.Join(root, f.Name())
 		default:
 			if strings.HasSuffix(f.Name(), allowedExt) {
-				pt.Others = append(pt.Others, path.Join(root, f.Name()))
+				pt.Others = append(pt.Others, filepath.Join(root, f.Name()))
 			}
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	"html/template"
 	"net/http"
 	"os"
-	"path"
 	"path/filepath"
 	"regexp"
 	"time"
@@ -53,6 +52,11 @@ type Page struct {
 }
 
 var (
+	ErrAlreadyExists = fmt.Errorf("file already exists: %w", os.ErrExist)
+	ErrInvalidSlug   = errors.New("invalid slug")
+)
+
+var (
 	mdParser = parser.New(
 		parser.WithAutoHeadingID(),
 		parser.WithExtensions(extension.GFMParser),
@@ -63,7 +67,15 @@ var (
 )
 
 func Build(dir string) (err error) {
-	tmpDst := path.Join(dir, "tmp")
+	defer (func(dir string) {
+		if err != nil {
+			if dir == "" {
+				dir = "."
+			}
+			err = fmt.Errorf("gowiki: in %s: %w", dir, err)
+		}
+	})(dir)
+	tmpDst := filepath.Join(dir, "tmp")
 
 	err = os.MkdirAll(tmpDst, 0755)
 	if err != nil {
@@ -78,15 +90,15 @@ func Build(dir string) (err error) {
 		}
 	})()
 
-	siteSrc := path.Join(dir, "site.yaml")
+	siteSrc := filepath.Join(dir, "site.yaml")
 	if !fileOrDirExists(siteSrc) {
 		return errors.New("site.yaml not found")
 	}
-	contentSrc := path.Join(dir, "content")
+	contentSrc := filepath.Join(dir, "content")
 	if !fileOrDirExists(contentSrc) {
 		return errors.New("content directory not found")
 	}
-	templatesSrc := path.Join(dir, "templates")
+	templatesSrc := filepath.Join(dir, "templates")
 	if !fileOrDirExists(templatesSrc) {
 		return errors.New("templates directory not found")
 	}
@@ -109,7 +121,7 @@ func Build(dir string) (err error) {
 		SiteDescription: site.Description,
 		Pages:           contents,
 	}
-	if saveErr := saveHTML(iTmpl, path.Join(tmpDst, "index.html"), data); saveErr != nil {
+	if saveErr := saveHTML(iTmpl, filepath.Join(tmpDst, "index.html"), data); saveErr != nil {
 		return saveErr
 	}
 
@@ -119,7 +131,7 @@ func Build(dir string) (err error) {
 			SiteDescription: site.Description,
 			Page:            c,
 		}
-		if saveErr := saveHTML(pTmpl, path.Join(tmpDst, c.Slug+".html"), data); saveErr != nil {
+		if saveErr := saveHTML(pTmpl, filepath.Join(tmpDst, c.Slug+".html"), data); saveErr != nil {
 			return saveErr
 		}
 	}
@@ -129,7 +141,7 @@ func Build(dir string) (err error) {
 		return err
 	}
 
-	dst := path.Join(dir, "public")
+	dst := filepath.Join(dir, "public")
 	if removeErr := os.RemoveAll(dst); removeErr != nil && !errors.Is(removeErr, os.ErrNotExist) {
 		return removeErr
 	}
@@ -137,10 +149,18 @@ func Build(dir string) (err error) {
 	return os.Rename(tmpDst, dst)
 }
 
-func Serve(dir string, addr string) error {
+func Serve(dir string, addr string) (err error) {
+	defer (func(dir string, addr string) {
+		if err != nil {
+			if dir == "" {
+				dir = "."
+			}
+			err = fmt.Errorf("gowiki: in %s at %s: %w", dir, addr, err)
+		}
+	})(dir, addr)
 	dst := dir
 	if filepath.Base(dst) != "public" {
-		dst = path.Join(dir, "public")
+		dst = filepath.Join(dir, "public")
 	}
 	if !fileOrDirExists(dst) {
 		return errors.New("public directory does not exist")
@@ -151,8 +171,16 @@ func Serve(dir string, addr string) error {
 }
 
 func Create(slug string, dir string) (err error) {
+	defer (func(slug string, dir string) {
+		if err != nil {
+			if dir == "" {
+				dir = "."
+			}
+			err = fmt.Errorf("gowiki: %s in %s: %w", slug, dir, err)
+		}
+	})(slug, dir)
 	if validateSlug(slug) {
-		return errors.New("invalid slug")
+		return ErrInvalidSlug
 	}
 
 	meta := Meta{
@@ -164,14 +192,14 @@ func Create(slug string, dir string) (err error) {
 	fileName := slug + ".md"
 	dst := dir
 	if filepath.Base(dir) != "content" {
-		dst = path.Join(dir, "content")
+		dst = filepath.Join(dir, "content")
 	}
 	if mkdirErr := os.MkdirAll(dst, 0755); mkdirErr != nil {
 		return mkdirErr
 	}
-	fp := path.Join(dst, fileName)
+	fp := filepath.Join(dst, fileName)
 	if fileOrDirExists(fp) {
-		return errors.New("file already exists")
+		return ErrAlreadyExists
 	}
 	tmp := fp + ".tmp"
 	defer (func() {
@@ -247,8 +275,8 @@ func saveHTML(tmpl *template.Template, path string, data any) (err error) {
 }
 
 func copyStatic(src string, dst string) error {
-	staticSrc := path.Join(src, "static")
-	staticDst := path.Join(dst, "static")
+	staticSrc := filepath.Join(src, "static")
+	staticDst := filepath.Join(dst, "static")
 	fs := os.DirFS(staticSrc)
 	return os.CopyFS(staticDst, fs)
 }
