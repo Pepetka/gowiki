@@ -1,8 +1,0 @@
-{{ define "title" }}{{ .Title }} — {{ .SiteTitle }}{{ end }}
-{{ define "content" }}
-    <h1>{{ .Title }}</h1>
-    {{- if not .Date.IsZero }}
-    <time class="page-date" datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "02.01.2006" }}</time>
-    {{- end }}
-    {{ .Content -}}
-{{ end }}
