@@ -1,4 +1,4 @@
-// Package gowiki builds a static site from markdown files
+// Package gowiki builds a static site from markdown files.
 package gowiki
 
 import (
@@ -17,17 +17,21 @@ import (
 	"github.com/yuin/goldmark/v2/renderer/html"
 )
 
+// Site describes the whole site, loaded from site.yaml.
 type Site struct {
 	Title       string `yaml:"title"`
 	Description string `yaml:"description"`
 }
 
+// Meta is the YAML front matter of a single content page.
+// Pages with Draft set to true are skipped by Build.
 type Meta struct {
 	Title string    `yaml:"title"`
 	Date  time.Time `yaml:"date"`
 	Draft bool      `yaml:"draft"`
 }
 
+// IndexDocument is the data passed to the index template.
 type IndexDocument struct {
 	SiteTitle       string
 	SiteDescription string
@@ -35,6 +39,7 @@ type IndexDocument struct {
 	Pages []Page
 }
 
+// PageDocument is the data passed to the page template.
 type PageDocument struct {
 	SiteTitle       string
 	SiteDescription string
@@ -42,6 +47,7 @@ type PageDocument struct {
 	Page
 }
 
+// Page is a single content page rendered to HTML.
 type Page struct {
 	Title string
 	Date  time.Time
@@ -52,8 +58,10 @@ type Page struct {
 }
 
 var (
+	// ErrAlreadyExists is returned by Create when the page file already exists.
 	ErrAlreadyExists = os.ErrExist
-	ErrInvalidSlug   = errors.New("invalid slug")
+	// ErrInvalidSlug is returned by Create when the slug does not match ^[a-z0-9-]+$.
+	ErrInvalidSlug = errors.New("invalid slug")
 )
 
 var slugRe = regexp.MustCompile(`^[a-z0-9-]+$`)
@@ -68,29 +76,29 @@ var (
 	)
 )
 
+// Build compiles the site in dir into dir/public. The site is assembled in a
+// temporary directory and moved into place atomically. Build requires
+// dir/site.yaml, dir/content, and dir/templates to exist; dir/static is
+// copied to dir/public/static if present.
 func Build(dir string) (err error) {
-	defer (func(dir string) {
+	defer func() {
 		if err != nil {
-			if dir == "" {
-				dir = "."
-			}
 			err = fmt.Errorf("gowiki: in %s: %w", dir, err)
 		}
-	})(dir)
-	tmpDst := filepath.Join(dir, "tmp")
+	}()
 
-	err = os.MkdirAll(tmpDst, 0755)
+	if dir == "" {
+		dir = "."
+	}
+	tmpDst, err := os.MkdirTemp(dir, ".gowiki-*")
 	if err != nil {
 		return err
 	}
-	defer (func() {
-		if !fileOrDirExists(tmpDst) {
-			return
-		}
+	defer func() {
 		if removeErr := os.RemoveAll(tmpDst); removeErr != nil && err == nil {
 			err = removeErr
 		}
-	})()
+	}()
 
 	siteSrc := filepath.Join(dir, "site.yaml")
 	if !fileOrDirExists(siteSrc) {
@@ -151,15 +159,18 @@ func Build(dir string) (err error) {
 	return os.Rename(tmpDst, dst)
 }
 
-func Serve(dir string, addr string) (err error) {
-	defer (func(dir string, addr string) {
+// Serve serves the built site from dir/public (or dir itself if it is the
+// public directory) over HTTP at addr.
+func Serve(dir, addr string) (err error) {
+	defer func() {
 		if err != nil {
-			if dir == "" {
-				dir = "."
-			}
 			err = fmt.Errorf("gowiki: in %s at %s: %w", dir, addr, err)
 		}
-	})(dir, addr)
+	}()
+
+	if dir == "" {
+		dir = "."
+	}
 	dst := dir
 	if filepath.Base(dst) != "public" {
 		dst = filepath.Join(dir, "public")
@@ -171,15 +182,19 @@ func Serve(dir string, addr string) (err error) {
 	return http.ListenAndServe(addr, http.FileServer(http.Dir(dst)))
 }
 
-func Create(slug string, dir string) (err error) {
-	defer (func(slug string, dir string) {
+// Create writes a new draft page with the given slug into dir/content (or
+// dir itself if it is the content directory). The slug must match
+// ^[a-z0-9-]+$. Create fails with ErrAlreadyExists if the file exists.
+func Create(slug, dir string) (err error) {
+	defer func() {
 		if err != nil {
-			if dir == "" {
-				dir = "."
-			}
 			err = fmt.Errorf("gowiki: %s in %s: %w", slug, dir, err)
 		}
-	})(slug, dir)
+	}()
+
+	if dir == "" {
+		dir = "."
+	}
 	if !validateSlug(slug) {
 		return ErrInvalidSlug
 	}
@@ -203,14 +218,11 @@ func Create(slug string, dir string) (err error) {
 		return ErrAlreadyExists
 	}
 	tmp := fp + ".tmp"
-	defer (func() {
-		if !fileOrDirExists(tmp) {
-			return
-		}
+	defer func() {
 		if removeErr := os.RemoveAll(tmp); removeErr != nil && err == nil {
 			err = removeErr
 		}
-	})()
+	}()
 	if saveErr := saveContent(meta, tmp); saveErr != nil {
 		return saveErr
 	}
@@ -228,11 +240,11 @@ func saveContent(meta Meta, fp string) (err error) {
 	if err != nil {
 		return err
 	}
-	defer (func() {
+	defer func() {
 		if closeErr := f.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
-	})()
+	}()
 
 	if _, writeErr := f.WriteString("---\n"); writeErr != nil {
 		return writeErr
@@ -260,15 +272,15 @@ func saveHTML(tmpl *template.Template, path string, data any) (err error) {
 	if err != nil {
 		return err
 	}
-	defer (func() {
+	defer func() {
 		if closeErr := f.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
-	})()
+	}()
 	return tmpl.Execute(f, data)
 }
 
-func copyStatic(src string, dst string) error {
+func copyStatic(src, dst string) error {
 	staticSrc := filepath.Join(src, "static")
 	staticDst := filepath.Join(dst, "static")
 	if !fileOrDirExists(staticSrc) {

@@ -2,6 +2,7 @@ package gowiki
 
 import (
 	"bytes"
+	"cmp"
 	"errors"
 	"fmt"
 	"html/template"
@@ -14,16 +15,16 @@ import (
 	"github.com/goccy/go-yaml"
 )
 
-func parseSite(path string) (site Site, err error) {
-	file, err := os.Open(path)
+func parseSite(name string) (site Site, err error) {
+	file, err := os.Open(name)
 	if err != nil {
 		return site, err
 	}
-	defer (func() {
+	defer func() {
 		if closeErr := file.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
-	})()
+	}()
 
 	decoder := yaml.NewDecoder(file, yaml.Strict())
 	if err = decoder.Decode(&site); err != nil {
@@ -64,32 +65,22 @@ func parseAllContent(dir string) ([]Page, error) {
 		return nil, parseErr
 	}
 	slices.SortFunc(c, func(a, b Page) int {
-		aTime := a.Date
-		bTime := b.Date
-
-		if aTime.Equal(bTime) {
-			return strings.Compare(a.Title, b.Title)
-		}
-		if aTime.After(bTime) {
-			return -1
-		} else {
-			return 1
-		}
+		return cmp.Or(b.Date.Compare(a.Date), strings.Compare(a.Title, b.Title))
 	})
 
 	return c, nil
 }
 
-func parseContent(path string) (meta Meta, content template.HTML, err error) {
-	file, err := os.Open(path)
+func parseContent(name string) (meta Meta, content template.HTML, err error) {
+	file, err := os.Open(name)
 	if err != nil {
 		return meta, template.HTML(""), err
 	}
-	defer (func() {
+	defer func() {
 		if closeErr := file.Close(); closeErr != nil && err == nil {
 			err = closeErr
 		}
-	})()
+	}()
 
 	m, c, err := splitMD(file)
 	if err != nil {
@@ -139,9 +130,7 @@ func parseTemplates(dir string) (*template.Template, *template.Template, error) 
 		tf = append(tf, pt.Layout)
 	}
 	tf = append(tf, pt.Page)
-	if len(pt.Others) > 0 {
-		tf = append(tf, pt.Others...)
-	}
+	tf = append(tf, pt.Others...)
 	pTmpl, err := template.ParseFiles(tf...)
 	if err != nil {
 		return nil, nil, err
@@ -152,7 +141,7 @@ func parseTemplates(dir string) (*template.Template, *template.Template, error) 
 
 func groupTemplates(root string) (pageTemplates, error) {
 	allowedExt := ".html"
-	pt := pageTemplates{}
+	var pt pageTemplates
 
 	files, err := os.ReadDir(root)
 	if err != nil {
@@ -179,7 +168,7 @@ func groupTemplates(root string) (pageTemplates, error) {
 	return pt, nil
 }
 
-func dirWalker(root string, fn func(path string) error, allowedExt string) error {
+func dirWalker(root string, fn func(p string) error, allowedExt string) error {
 	fileSystem := os.DirFS(root)
 
 	err := fs.WalkDir(fileSystem, ".", func(p string, d fs.DirEntry, err error) error {
