@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ .SiteTitle }}</title>
+  <link rel="stylesheet" href="static/style.css">
+</head>
+<body>
+  <header class="site-header">
+    <span class="site-title">{{ .SiteTitle }}</span>
+    <p class="site-description">{{ .SiteDescription }}</p>
+  </header>
+  <main class="index">
+    <h1>Страницы</h1>
+    <ul class="page-list">
+      {{ range .Pages }}
+      <li>
+        {{ if not .Date.IsZero }}<time datetime="{{ .Date.Format "2006-01-02" }}">{{ .Date.Format "02.01.2006" }}</time> —{{ end }}
+        <a href="{{ .Slug }}.html">{{ .Title }}</a>
+      </li>
+      {{ else }}
+      <li>Пока ни одной страницы.</li>
+      {{ end }}
+    </ul>
+  </main>
+</body>
+</html>

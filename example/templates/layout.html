@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ .Title }} — {{ .SiteTitle }}</title>
+    <link rel="stylesheet" href="static/style.css" />
+  </head>
+  <body>
+    <header class="site-header">
+      <a class="site-title" href="index.html">{{ .SiteTitle }}</a>
+    </header>
+    <main class="page">{{ block "main" . }}Ничего не найдено{{ end }}</main>
+  </body>
+</html>
