@@ -3,6 +3,7 @@ package gowiki
 import (
 	"bytes"
 	"errors"
+	"fmt"
 	"html/template"
 	"io/fs"
 	"os"
@@ -38,7 +39,11 @@ func parseAllContent(dir string) ([]Page, error) {
 	err := dirWalker(dir, func(relPath string) error {
 		meta, content, err := parseContent(filepath.Join(dir, relPath))
 		if err != nil {
-			parseErr = errors.Join(parseErr, err)
+			parseErr = errors.Join(parseErr, fmt.Errorf("%s: %w", relPath, err))
+			return nil
+		}
+		if meta.Title == "" {
+			parseErr = errors.Join(parseErr, fmt.Errorf("%s: missing title", relPath))
 			return nil
 		}
 		if meta.Draft {
@@ -175,9 +180,9 @@ func groupTemplates(root string) (pageTemplates, error) {
 }
 
 func dirWalker(root string, fn func(path string) error, allowedExt string) error {
-	fileSistem := os.DirFS(root)
+	fileSystem := os.DirFS(root)
 
-	err := fs.WalkDir(fileSistem, ".", func(p string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fileSystem, ".", func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}

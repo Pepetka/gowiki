@@ -52,9 +52,11 @@ type Page struct {
 }
 
 var (
-	ErrAlreadyExists = fmt.Errorf("file already exists: %w", os.ErrExist)
+	ErrAlreadyExists = os.ErrExist
 	ErrInvalidSlug   = errors.New("invalid slug")
 )
+
+var slugRe = regexp.MustCompile(`^[a-z0-9-]+$`)
 
 var (
 	mdParser = parser.New(
@@ -166,7 +168,6 @@ func Serve(dir string, addr string) (err error) {
 		return errors.New("public directory does not exist")
 	}
 
-	fmt.Printf("Serving on %s\n", addr)
 	return http.ListenAndServe(addr, http.FileServer(http.Dir(dst)))
 }
 
@@ -179,13 +180,13 @@ func Create(slug string, dir string) (err error) {
 			err = fmt.Errorf("gowiki: %s in %s: %w", slug, dir, err)
 		}
 	})(slug, dir)
-	if validateSlug(slug) {
+	if !validateSlug(slug) {
 		return ErrInvalidSlug
 	}
 
 	meta := Meta{
 		Title: slug,
-		Date:  time.Now(),
+		Date:  time.Now().Truncate(time.Second),
 		Draft: true,
 	}
 
@@ -219,13 +220,7 @@ func Create(slug string, dir string) (err error) {
 
 func fileOrDirExists(path string) bool {
 	_, err := os.Stat(path)
-	if err == nil {
-		return true
-	}
-	if !errors.Is(err, os.ErrNotExist) {
-		return false
-	}
-	return false
+	return err == nil
 }
 
 func saveContent(meta Meta, fp string) (err error) {
@@ -253,8 +248,7 @@ func saveContent(meta Meta, fp string) (err error) {
 }
 
 func validateSlug(slug string) bool {
-	re := regexp.MustCompile(`^[a-z0-9-]+$`)
-	return !re.MatchString(slug)
+	return slugRe.MatchString(slug)
 }
 
 func saveHTML(tmpl *template.Template, path string, data any) (err error) {
@@ -277,6 +271,9 @@ func saveHTML(tmpl *template.Template, path string, data any) (err error) {
 func copyStatic(src string, dst string) error {
 	staticSrc := filepath.Join(src, "static")
 	staticDst := filepath.Join(dst, "static")
+	if !fileOrDirExists(staticSrc) {
+		return nil
+	}
 	fs := os.DirFS(staticSrc)
 	return os.CopyFS(staticDst, fs)
 }

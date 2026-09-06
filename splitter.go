@@ -15,20 +15,37 @@ func splitMD(r io.Reader) (meta []byte, content []byte, err error) {
 		return nil, nil, nil
 	}
 
-	oi := bytes.Index(md, []byte("\n"))
-	first := bytes.TrimSpace(md[:oi])
-	if !bytes.Equal(first, []byte("---")) {
+	before, after, ok := splitBySepLine(md, []byte("---"))
+	if !ok {
+		return nil, md, nil
+	}
+	if len(before) != 0 {
 		return nil, md, nil
 	}
 
-	g := md[oi+1:]
-	ci := bytes.Index(g, []byte("---"))
-	if ci == -1 {
+	before, after, ok = splitBySepLine(after, []byte("---"))
+	if !ok {
 		return nil, md, nil
 	}
-	if ci == 0 {
-		return nil, g[oi+3:], nil
+	if len(before) == 0 {
+		return nil, after, nil
 	}
 
-	return bytes.TrimSpace(g[:ci]), bytes.TrimSpace(g[ci+3:]), nil
+	return bytes.TrimSpace(before), bytes.TrimSpace(after), nil
+}
+
+func splitBySepLine(s []byte, sep []byte) ([]byte, []byte, bool) {
+	j := 0
+	for i := range s {
+		if s[i] != '\n' {
+			continue
+		}
+		b := bytes.TrimSpace(s[j:i])
+		if bytes.Equal(b, sep) {
+			return s[:j], s[i+1:], true
+		}
+		j = i
+	}
+
+	return s, nil, false
 }

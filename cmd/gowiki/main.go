@@ -31,9 +31,9 @@ func run() error {
 		return serveHandler(args[1:])
 	case NewCommand:
 		return createHandler(args[1:])
+	default:
+		return errors.New("unknown command")
 	}
-
-	return nil
 }
 
 type Command string

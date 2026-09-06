@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -47,6 +48,7 @@ func serveHandler(args []string) error {
 		}
 	}
 
+	fmt.Printf("Serving on %s\n", addr)
 	return gowiki.Serve(dir, addr)
 }
 
